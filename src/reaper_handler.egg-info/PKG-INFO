@@ -1,0 +1,344 @@
+Metadata-Version: 2.4
+Name: reaper-handler
+Version: 0.1.0
+Summary: Reaper – multi-session reverse/bind shell handler
+License: MIT
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+
+# Reaper ☠
+
+![Python](https://img.shields.io/badge/python-3.9+-blueviolet?style=for-the-badge&logo=python&logoColor=white)
+![Linux](https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)
+![Windows](https://img.shields.io/badge/Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white)
+
+**Reaper** is a multi-session reverse/bind shell handler built for pentesters and CTF players.  
+It combines the clean multi-session UI of [Koi](https://github.com/b3rt1ng/Koi) with the workflow features of [Penelope](https://github.com/brightio/penelope) — session logging, file upload/download, HTTP serving, bind-shell support, and more — wrapped in a death-themed terminal interface.
+
+---
+
+## Features
+
+| Feature | Details |
+|---|---|
+| **Multi-session** | Handle unlimited reverse shells simultaneously. List, switch, and background sessions. |
+| **Multi-listener** | Bind to multiple ports at once (`-p 4444,5555,9001`). |
+| **PTY upgrade** | Upgrades raw Linux shells to full PTY (tab completion, `Ctrl+C`, terminal resize). |
+| **Windows support** | Upgrades PowerShell/CMD via [ConPtyShell](https://github.com/antonioCoco/ConPtyShell). |
+| **Session logging** | Every session is logged to `~/.reaper/logs/` automatically. |
+| **File upload/download** | Transfer files in both directions via TCP side-channel. |
+| **Directory download** | Download a whole remote directory as a `.tar.gz`. |
+| **HTTP file server** | `reaper -s ./tools` to serve files instantly over HTTP. |
+| **Bind shell** | `reaper -c <target>` to connect to a bind shell. |
+| **Payload generation** | Built-in reverse-shell payloads for bash, python, php, perl, ruby, nc, socat, powershell. |
+| **Module system** | Extensible modules (LinPEAS runner, sysinfo, upload, download). Hot-reload with `reload`. |
+| **OSCP-safe mode** | `-O` flag disables modules that violate OSCP rules. |
+| **Tab completion** | Main prompt supports tab completion for all commands. |
+| **Screenable mode** | Hidden `_reaper_screenable_` command redacts IPs for sharing screenshots. |
+| **Clean signals** | `Ctrl+Z` backgrounds a session. `Ctrl+C` forwards `SIGINT` to the remote. |
+
+---
+
+## Installation
+
+### From source (recommended for module development)
+
+```bash
+git clone <repo>
+cd Reaper
+pipx install --editable .
+```
+
+### Via pipx
+
+```bash
+pipx install git+<repo-url>
+```
+
+---
+
+## Usage
+
+### Start a listener
+
+```bash
+# Default: 0.0.0.0:4444
+reaper
+
+# Custom port
+reaper -p 9001
+
+# Multiple ports
+reaper -p 4444,5555,9001
+
+# Bind to a specific interface
+reaper -i tun0 -p 4444
+```
+
+### Connect to a bind shell
+
+```bash
+reaper -c 10.10.10.50 -p 4444
+```
+
+### Serve files over HTTP
+
+```bash
+# Serve current directory on :8000
+reaper -s .
+
+# Serve a specific file on custom port
+reaper -s /opt/tools/linpeas.sh --serve-port 9090
+```
+
+### Show payloads
+
+```bash
+# All interfaces
+reaper -a
+
+# Specific interface
+reaper -a tun0
+```
+
+### Session logging
+
+All sessions are logged automatically to `~/.reaper/logs/`.
+
+```bash
+# Disable logging
+reaper -L
+
+# Custom log directory
+reaper --log-dir /tmp/reaper-logs
+```
+
+### OSCP-safe mode
+
+```bash
+reaper -O
+```
+
+---
+
+## Shell Commands
+
+Once Reaper is running, you interact with it via the `reaper(N sessions) ❯` prompt.
+
+### Session management
+
+| Command | Description |
+|---|---|
+| `ls` | List all sessions |
+| `go <id>` | Interact with a session |
+| `upgrade <id>` | Upgrade shell to PTY |
+| `kill <id>` | Terminate a session |
+| `setshell <id> <os>` | Override OS detection (`linux`, `cmd`, `ps`) |
+| `log <id>` | Show log file path for a session |
+
+### Payload generation
+
+```
+reaper❯ payloads
+reaper❯ payloads tun0
+```
+
+### Modules
+
+```
+reaper❯ modules
+reaper❯ run sysinfo 1
+reaper❯ run upload 1 /local/file.sh /tmp/file.sh
+reaper❯ run download 1 /etc/passwd
+reaper❯ run download_dir 1 /etc
+reaper❯ run linpeas 1
+reaper❯ run linpeas 1 -o /tmp/lp_output.txt
+reaper❯ reload
+```
+
+### HTTP server (from main menu)
+
+```
+reaper❯ serve /opt/tools 8888
+reaper❯ serve .
+reaper❯ stopserve
+```
+
+### Misc
+
+```
+reaper❯ listeners
+reaper❯ help
+reaper❯ exit
+```
+
+---
+
+## Key Bindings (when inside a session)
+
+| Key | Action |
+|---|---|
+| `Ctrl+Z` | Background session, return to main menu |
+| `Ctrl+C` | Send SIGINT to the remote process (does NOT kill Reaper) |
+
+---
+
+## PTY Upgrade
+
+Raw shells lack tab completion and proper signal forwarding.  
+Use `upgrade <id>` to fix that.
+
+```
+reaper❯ upgrade 1
+  ✓  Shell #1 upgraded to PTY.
+reaper❯ go 1
+  # now a full PTY: tab completion, Ctrl+C, terminal resize
+```
+
+**Linux** — spawns a Python PTY:
+```bash
+python3 -c 'import pty; pty.spawn("/bin/bash")'
+```
+
+**Windows** — uploads and runs [ConPtyShell](https://github.com/antonioCoco/ConPtyShell), which connects back on the same port as a new session.
+
+---
+
+## Writing Custom Modules
+
+Create a file in `src/reaper/modules/` and subclass `ReaperModule`:
+
+```python
+from reaper.modules.blueprint import ReaperModule
+
+class MyModule(ReaperModule):
+    name        = "my_module"
+    description = "Does something cool."
+    category    = "Enumeration"        # optional, for grouping in the UI
+    platform    = ["linux"]            # "linux", "windows_cmd", "windows_ps", or "any"
+
+    def run(self) -> None:
+        # exec() runs a command and waits for it to finish
+        result = self.exec("whoami")
+        self.ok(f"Running as: {result.stdout.strip()}")
+
+        # exec_stream() yields output line by line (for long-running commands)
+        for line in self.exec_stream("find / -name '*.conf' 2>/dev/null", timeout=60.0):
+            self.notify("info", line.text)
+
+        # notify() prints to the Reaper console
+        self.warn("Something to note.")
+        self.err("Something went wrong.")
+```
+
+Then hot-reload without restarting:
+```
+reaper❯ reload
+```
+
+### Module helpers
+
+| Helper | Description |
+|---|---|
+| `self.exec(cmd, timeout)` | Run command, return `CommandResult` |
+| `self.exec_stream(cmd, timeout)` | Yield `StreamLine` objects line-by-line |
+| `self.send(bytes)` | Send raw bytes to session |
+| `self.sendline(str)` | Send string + newline |
+| `self.ok(msg)` | Success notification |
+| `self.warn(msg)` | Warning notification |
+| `self.err(msg)` | Error notification |
+| `self.spinner(msg)` | Context manager spinner |
+| `self.box(title, dict)` | Render a bordered table |
+| `self.session` | The `Session` dataclass |
+
+---
+
+## File Transfer
+
+### Upload (local → remote)
+
+```
+reaper❯ run upload 1 /home/kali/tools/linpeas.sh /tmp/linpeas.sh
+```
+
+### Download (remote → local)
+
+```
+reaper❯ run download 1 /etc/shadow
+reaper❯ run download 1 /root/.ssh/id_rsa ./loot/id_rsa
+```
+
+### Download entire directory
+
+```
+reaper❯ run download_dir 1 /etc ./loot/etc.tar.gz
+```
+
+---
+
+## Session Logs
+
+Logs are written to `~/.reaper/logs/` in the format:
+
+```
+session_<id>_<ip>_<timestamp>.log
+```
+
+Find the path for a session:
+```
+reaper❯ log 1
+  ·  Session #1 log: /home/kali/.reaper/logs/session_1_10.10.14.2_20260101_120000.log
+```
+
+---
+
+## Screenable Mode
+
+Redacts IP addresses for sharing screenshots during live streams or write-ups.
+
+```
+reaper❯ _reaper_screenable_
+  ·  Screenable mode ON
+```
+
+(This command is hidden from history.)
+
+---
+
+## Project Structure
+
+```
+Reaper/
+├── README.md
+├── pyproject.toml
+└── src/
+    └── reaper/
+        ├── main.py          # CLI entry point
+        ├── listener.py      # Core listener + command loop
+        ├── session.py       # Session model + RawTerminal
+        ├── detect.py        # OS auto-detection
+        ├── cli.py           # Help text
+        ├── server.py        # HTTP file server
+        ├── models.py        # CommandResult, StreamLine
+        ├── modules/
+        │   ├── blueprint.py # ReaperModule base class
+        │   ├── loader.py    # Dynamic module loader
+        │   ├── sysinfo.py   # System enumeration
+        │   ├── upload.py    # File upload
+        │   ├── download.py  # File download / directory archive
+        │   └── linpeas.py   # LinPEAS runner
+        └── utils/
+            ├── ui.py        # Colors, art, notifications, spinner
+            ├── tcp.py       # TCP helpers (send/recv servers)
+            └── payloads.py  # Reverse-shell payload generator
+```
+
+---
+
+## Credits
+
+Inspired by:
+- [Koi](https://github.com/b3rt1ng/Koi) — multi-session shell handler with beautiful UI
+- [Penelope](https://github.com/brightio/penelope) — feature-rich netcat replacement
+- [ConPtyShell](https://github.com/antonioCoco/ConPtyShell) — Windows PTY upgrade
+- [PEASS-ng](https://github.com/peass-ng/PEASS-ng) — privilege escalation scripts

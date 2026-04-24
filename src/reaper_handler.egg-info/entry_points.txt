@@ -1,0 +1,2 @@
+[console_scripts]
+reaper = reaper.main:main

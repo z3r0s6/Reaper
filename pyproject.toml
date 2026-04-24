@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "reaper-handler"
+version = "0.1.0"
+description = "Reaper – multi-session reverse/bind shell handler"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+
+[project.scripts]
+reaper = "reaper.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
