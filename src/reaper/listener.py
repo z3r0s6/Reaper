@@ -85,11 +85,11 @@ class Listener:
     # Session management
     # ------------------------------------------------------------------ #
 
-    def _add(self, conn: socket.socket, addr: tuple) -> Session:
+    def _add(self, conn: socket.socket, addr: tuple, listener_port: int = 0) -> Session:
         with self._id_lock:
             sid = self._next_id
             self._next_id += 1
-        sess = Session(id=sid, conn=conn, addr=addr)
+        sess = Session(id=sid, conn=conn, addr=addr, listener_port=listener_port)
         if self.log_sessions:
             sess.open_log(self.log_dir)
         self._sessions[sid] = sess
@@ -115,6 +115,13 @@ class Listener:
     # ------------------------------------------------------------------ #
 
     def _accept_loop(self, srv_sock: socket.socket) -> None:
+        # Remember which port this loop is bound to so we can stamp it on
+        # incoming sessions — the operator needs this to tell shells apart
+        # when multiple listeners are running.
+        try:
+            local_port = srv_sock.getsockname()[1]
+        except OSError:
+            local_port = 0
         while self._running:
             try:
                 srv_sock.settimeout(1.0)
@@ -123,7 +130,7 @@ class Listener:
                 continue
             except OSError:
                 break
-            sess = self._add(conn, addr)
+            sess = self._add(conn, addr, listener_port=local_port)
             threading.Thread(
                 target=self._detect_and_notify,
                 args=(sess,),
@@ -132,7 +139,7 @@ class Listener:
             ).start()
 
     def _detect_and_notify(self, sess: Session) -> None:
-        from reaper.detect import detect_os
+        from reaper.detect import detect_os, fetch_identity
 
         parent_os = self._pending_conpty.pop(sess.addr[0], None)
         if parent_os is not None:
@@ -148,10 +155,23 @@ class Listener:
         if not sess.alive:
             return
 
+        # Once we know the OS, grab user@host so the notification carries
+        # enough context for the operator to recognise the shell on sight.
+        if sess.os_type and sess.identity is None:
+            try:
+                fetch_identity(sess)
+            except Exception:
+                pass
+
         # Build the new-session notification line
         os_tag    = f" {_gr('[')} {sess.os_label()} {_gr(']')}" if sess.os_type else f" {_gr('[?]')}"
         masked_ip = self._mask_ip(sess.addr[0])
-        msg       = f"{_b(_p(f'#{sess.id}'))}  {_c(masked_ip)}{_gr(f':{sess.addr[1]}')}{os_tag}"
+        port_tag  = f" {_gr('→')} {_y(f':{sess.listener_port}')}" if sess.listener_port else ""
+        ident_tag = f"  {_gh(sess.identity)}" if sess.identity else ""
+        msg       = (
+            f"{_b(_p(f'#{sess.id}'))}  {_c(masked_ip)}{_gr(f':{sess.addr[1]}')}"
+            f"{port_tag}{os_tag}{ident_tag}"
+        )
 
         # ── Auto-upgrade (Linux only, before notifying so the shell is ready) ──
         if sess.os_type == "linux" and not sess.upgraded:
@@ -384,6 +404,13 @@ class Listener:
                     except Exception:
                         pass
                 s.close()
+
+        # Release the wake-up pipe so we don't leak fds across restarts.
+        for fd in (self._notify_r, self._notify_w):
+            try:
+                os.close(fd)
+            except OSError:
+                pass
         print()
 
     # ------------------------------------------------------------------ #
@@ -547,8 +574,13 @@ class Listener:
             return
         data = {}
         for s in sorted(self._sessions.values(), key=lambda x: x.id):
-            masked = self._mask_ip(s.addr[0])
-            key    = f"#{s.id}  {s.status_dot()}  {_c(masked)}{_gr(f':{s.addr[1]}')} [{s.os_label()}]"
+            masked   = self._mask_ip(s.addr[0])
+            port_tag = f" {_gr('→')} {_y(f':{s.listener_port}')}" if s.listener_port else ""
+            ident    = f"  {_gh(s.identity)}" if s.identity else ""
+            key = (
+                f"#{s.id}  {s.status_dot()}  {_c(masked)}{_gr(f':{s.addr[1]}')}"
+                f"{port_tag} [{s.os_label()}]{ident}"
+            )
             data[key] = s._uptime()
         print_report_box("Sessions", data)
 
@@ -703,6 +735,9 @@ class Listener:
             new_sess = self._wait_for_new_session(sess.addr[0], known_ids, timeout=30.0)
 
         if new_sess is None:
+            # The callback never arrived — drop the marker so stale entries
+            # don't poison a future connection from this IP.
+            self._pending_conpty.pop(sess.addr[0], None)
             notify("error", "ConPtyShell did not connect back in time.")
             return
 
@@ -1083,7 +1118,13 @@ class BindConnector:
             notify("error", f"Connection failed: {exc}")
             return
         addr = (self.host, self.port)
-        sess = self.listener._add(conn, addr)
+        # Stamp listener_port with the remote port we connected to so the
+        # session is identifiable in `ls` even though we initiated it.
+        sess = self.listener._add(conn, addr, listener_port=self.port)
+        # The detect thread spawns _watch_session, which exits immediately
+        # unless _running is True.  Flip it before kicking off detection so
+        # the bind-mode shell is monitored from the start.
+        self.listener._running = True
         threading.Thread(
             target=self.listener._detect_and_notify,
             args=(sess,),

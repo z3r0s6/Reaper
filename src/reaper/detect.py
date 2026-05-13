@@ -87,6 +87,60 @@ def _apply(session: "Session", response: str, expected: str) -> None:
     _fallback(session)
 
 
+def fetch_identity(session: "Session") -> None:
+    """Best-effort grab of `user@host` so the operator can recognise the shell.
+
+    Only used for the notification line — failure is non-fatal.
+
+    The markers are assembled from shell variables so the command-echo coming
+    back doesn't contain the final sentinel and confuse the parser.
+    """
+    if not session.alive or session.os_type is None:
+        return
+
+    a1, a2 = uuid.uuid4().hex[:6], uuid.uuid4().hex[:6]
+    b1, b2 = uuid.uuid4().hex[:6], uuid.uuid4().hex[:6]
+    start  = f"__R{a1}{a2}__"
+    end    = f"__R{b1}{b2}__"
+
+    if session.os_type == "linux":
+        cmd = (
+            f"_A={a1}{a2};_B={b1}{b2};"
+            f"echo __R${{_A}}__;"
+            f"(whoami; hostname) 2>/dev/null | tr '\\n' '@';"
+            f"echo;echo __R${{_B}}__\n"
+        )
+    elif session.os_type == "windows_ps":
+        cmd = (
+            f"$_a='{a1}'+'{a2}';$_b='{b1}'+'{b2}';"
+            f"Write-Host \"__R${{_a}}__\";"
+            f"Write-Host (\"$env:USERNAME@$env:COMPUTERNAME\");"
+            f"Write-Host \"__R${{_b}}__\"\r\n"
+        )
+    else:  # windows_cmd
+        cmd = (
+            f"set _A={a1}{a2}& set _B={b1}{b2}& "
+            f"echo __R%_A%__& echo %USERNAME%@%COMPUTERNAME%& echo __R%_B%__\r\n"
+        )
+
+    try:
+        session.conn.sendall(cmd.encode(session.encoding, errors="replace"))
+    except OSError:
+        session.alive = False
+        return
+
+    raw = _recv_for(session, 3.0)
+    if start in raw and end in raw:
+        # rsplit on start so an echoed command containing the marker text
+        # doesn't shadow the real output block.
+        chunk = raw.rsplit(start, 1)[1].split(end, 1)[0]
+        for line in chunk.splitlines():
+            line = line.strip().rstrip("@")
+            if line and "@" in line and " " not in line and len(line) <= 80:
+                session.identity = line
+                return
+
+
 def _fallback(session: "Session") -> None:
     if not session.alive:
         return
