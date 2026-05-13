@@ -3,8 +3,28 @@
 ![Python](https://img.shields.io/badge/python-3.9+-blueviolet?style=for-the-badge&logo=python&logoColor=white)
 ![Linux](https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)
 ![Windows](https://img.shields.io/badge/Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white)
+![Version](https://img.shields.io/badge/version-1.1.0-crimson?style=for-the-badge)
 
 **Reaper** is a multi-session reverse/bind shell handler built for pentesters.
+
+---
+
+## What's new in 1.1
+
+- **Sessions now show which listener port received them** — when you run
+  several listeners (`-p 4444,5555,9001`) and a shell pops in, the
+  notification and `ls` clearly tag the local port so you can tell shells
+  apart at a glance.
+- **Auto-grabbed `user@host` identity** appended to the notification and
+  `ls` output, so you remember *what* the shell is, not just where it came
+  from.
+- **Windows session logs decode with the negotiated encoding** (`cp1252`),
+  no more mojibake in `~/.reaper/logs/`.
+- **Bind-shell mode no longer races the watchdog thread** — disconnects on
+  `reaper -c` sessions are detected from the first second.
+- **ConPtyShell pending-state cleanup** when the callback never arrives.
+- **Misc cleanup** — unused colour wrapper removed from `notify()`,
+  wake-up pipe FDs closed on `stop()`.
 
 ---
 
@@ -107,13 +127,18 @@ A session will appear in Terminal 1. Type `go 1` to interact with it.
 ## How it works
 
 When a shell connects Reaper automatically:
-1. Upgrades the shell to a full PTY
-2. Notifies you it's ready
+1. Detects the remote OS
+2. Grabs `user@host` for identification
+3. Upgrades the shell to a full PTY (Linux) / ConPtyShell (Windows)
+4. Notifies you it's ready
 
 ```
-  [☠]  10.10.14.5:44321 connected  →  #1
+  [☠]  #1  10.10.14.5:44321  →  :4444  [ linux ]  root@target
   [✓]  Shell #1 auto-upgraded to PTY.
 ```
+
+The `→  :4444` is the **local listener port** that received the shell —
+critical when you're listening on several ports for several targets.
 
 Just type `go 1` and you're in.
 
@@ -339,3 +364,25 @@ Reaper/
             ├── tcp.py       # TCP one-shot send/recv servers
             └── payloads.py  # Reverse-shell payload generator
 ```
+
+---
+
+## Changelog
+
+### 1.1.0
+
+- New: each `Session` carries the local listener port that received it.
+- New: notification + `ls` show `→ :PORT` and `user@host` identity.
+- New: `detect.fetch_identity()` runs after OS detection (Linux / cmd / PowerShell).
+- Fix: session log decoding now uses the session's negotiated encoding
+  (no more garbled Windows logs).
+- Fix: `BindConnector.connect()` flips `_running = True` so the watchdog
+  thread starts immediately for `reaper -c` shells.
+- Fix: stale `_pending_conpty` markers are cleared when ConPtyShell
+  doesn't connect back.
+- Fix: wake-up pipe file descriptors closed in `Listener.stop()`.
+- Cleanup: dead colour-wrapper code removed from `notify()`.
+
+### 0.1.0
+
+- Initial release.

@@ -177,9 +177,9 @@ _NOTIF = {
 
 
 def notify(kind: str, msg: str) -> None:
-    icon, txt_color = _NOTIF.get(kind, (_icon("·", GHOST), BONE))
-    text = colored_text(msg, txt_color) if sys.stdout.isatty() else msg
-    # Strip any existing color from msg so we apply txt_color cleanly
+    # Callers already colour-format the parts of `msg` they care about
+    # (via _p/_c/_b/etc.), so we just emit the icon and the pre-coloured msg.
+    icon, _ = _NOTIF.get(kind, (_icon("·", GHOST), BONE))
     print(f"  {icon} {msg}")
 
 

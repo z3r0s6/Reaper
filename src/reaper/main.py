@@ -96,7 +96,7 @@ def main():
     # Misc
     misc_grp = parser.add_argument_group("Misc")
     misc_grp.add_argument(
-        "-v", "--version", action="version", version="reaper 0.1.0",
+        "-v", "--version", action="version", version="reaper 1.1.0",
     )
 
     args = parser.parse_args()

@@ -21,12 +21,18 @@ class Session:
     id: int
     conn: socket.socket
     addr: tuple
+    # Which local listener port received this connection.  0 = unknown
+    # (e.g. bind-shell mode where we connected outward).
+    listener_port: int = 0
     connected_at: datetime = field(default_factory=datetime.now)
     alive: bool = True
     upgraded: bool = False
     os_type: OsType = field(default=None)
     encoding: str = field(default="utf-8")
     eol: str = field(default="\n")
+    # Optional identity captured during OS detection (e.g. "root@target").
+    # Helps the operator remember which shell is which when many are open.
+    identity: Optional[str] = field(default=None)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
     _log_fh: Optional[TextIO] = field(default=None, repr=False)
 
@@ -71,7 +77,9 @@ class Session:
         if self._log_fh is None:
             return
         try:
-            text = data.decode("utf-8", errors="replace")
+            # Decode with the session's negotiated encoding so Windows
+            # (cp1252) sessions log cleanly instead of getting mojibake.
+            text = data.decode(self.encoding or "utf-8", errors="replace")
             self._log_fh.write(text)
             self._log_fh.flush()
         except Exception:
