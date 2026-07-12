@@ -90,7 +90,7 @@ def _apply(session: "Session", response: str, expected: str) -> None:
 def fetch_identity(session: "Session") -> None:
     """Best-effort grab of `user@host` so the operator can recognise the shell.
 
-    Only used for the notification line — failure is non-fatal.
+    Only used for the notification line - failure is non-fatal.
 
     The markers are assembled from shell variables so the command-echo coming
     back doesn't contain the final sentinel and confuse the parser.

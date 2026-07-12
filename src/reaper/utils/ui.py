@@ -9,17 +9,19 @@ from random import choice
 
 _ANSI = re.compile(r"\033\[[^m]*m")
 
-# ── Dark palette ──────────────────────────────────────────────────────────────
-BONE    = (220, 215, 200)   # parchment – primary text
-BLOOD   = (210,  55,  50)   # red – errors
-CRIMSON = (220,  65,  55)   # crimson – accents / new session
-SCARLET = (255,  95,  75)   # bright scarlet – IDs / highlights
-ASH     = (150, 148, 160)   # medium ash – secondary / borders
-GHOST   = (185, 180, 195)   # ghostly – dim labels
-VOID    = (165, 125, 225)   # bright violet – section headers
-GOLD    = (210, 175,  75)   # gold – success / OS tags
-EMBER   = (225, 130,  55)   # ember orange – warnings
-DIM_C   = (90,  88,  100)   # subtle – decorative elements
+# ── Dark palette (steel blue) ─────────────────────────────────────────────────
+# Tuned for readability on a dark terminal background: cool tones throughout,
+# high-luminance primary text, red kept only for errors so meaning stays clear.
+BONE    = (206, 220, 236)   # cool white - primary text
+BLOOD   = (233,  84,  94)   # red - errors only
+CRIMSON = ( 56, 148, 240)   # azure - accents / new session
+SCARLET = ( 74, 200, 245)   # bright cyan - IDs / highlights
+ASH     = (124, 140, 168)   # steel gray - secondary / borders
+GHOST   = (158, 174, 198)   # cool ghost - dim labels
+VOID    = (128, 156, 246)   # periwinkle - section headers
+GOLD    = ( 90, 200, 170)   # teal - success / OS tags
+EMBER   = (232, 200,  96)   # amber - warnings
+DIM_C   = ( 78,  92, 120)   # dim blue-gray - decorative elements
 
 RST  = "\033[0m"
 DIM  = "\033[2m"
@@ -107,8 +109,8 @@ _SKULL = (
 )
 
 _TITLE_LINES = (
-    (BLOOD,   CRIMSON, "  ██████╗ ███████╗ █████╗ ██████╗ ███████╗██████╗ "),
-    (BLOOD,   CRIMSON, "  ██╔══██╗██╔════╝██╔══██╗██╔══██╗██╔════╝██╔══██╗"),
+    (VOID,    CRIMSON, "  ██████╗ ███████╗ █████╗ ██████╗ ███████╗██████╗ "),
+    (VOID,    CRIMSON, "  ██╔══██╗██╔════╝██╔══██╗██╔══██╗██╔════╝██╔══██╗"),
     (CRIMSON, SCARLET, "  ██████╔╝█████╗  ███████║██████╔╝█████╗  ██████╔╝"),
     (CRIMSON, SCARLET, "  ██╔══██╗██╔══╝  ██╔══██║██╔═══╝ ██╔══╝  ██╔══██╗"),
     (ASH,     GHOST,   "  ██║  ██║███████╗██║  ██║██║     ███████╗██║  ██║ "),
@@ -189,12 +191,12 @@ class Spinner:
     _FRAMES = [
         colored_text("⣾", CRIMSON),
         colored_text("⣽", CRIMSON),
-        colored_text("⣻", BLOOD),
-        colored_text("⢿", BLOOD),
+        colored_text("⣻", SCARLET),
+        colored_text("⢿", SCARLET),
         colored_text("⡿", CRIMSON),
         colored_text("⣟", CRIMSON),
-        colored_text("⣯", BLOOD),
-        colored_text("⣷", BLOOD),
+        colored_text("⣯", SCARLET),
+        colored_text("⣷", SCARLET),
     ]
 
     def __init__(self, msg: str = ""):

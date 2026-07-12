@@ -1,0 +1,16 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Build output
+build/
+*.egg
+
+# Reaper runtime data
+.reaper/
+
+# Editor and OS noise
+.idea/
+.vscode/
+.DS_Store

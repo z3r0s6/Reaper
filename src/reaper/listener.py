@@ -116,7 +116,7 @@ class Listener:
 
     def _accept_loop(self, srv_sock: socket.socket) -> None:
         # Remember which port this loop is bound to so we can stamp it on
-        # incoming sessions — the operator needs this to tell shells apart
+        # incoming sessions - the operator needs this to tell shells apart
         # when multiple listeners are running.
         try:
             local_port = srv_sock.getsockname()[1]
@@ -190,7 +190,7 @@ class Listener:
         if sess.os_type is None:
             notifications.append((
                 "warning",
-                f"OS detection failed on {_p(f'#{sess.id}')} — "
+                f"OS detection failed on {_p(f'#{sess.id}')} - "
                 f"shell may be unstable. Try {_b('upgrade ' + str(sess.id))} or reconnect.",
             ))
         elif sess.os_type == "linux":
@@ -199,7 +199,7 @@ class Listener:
             else:
                 notifications.append((
                     "warning",
-                    f"Auto-upgrade failed on {_p(f'#{sess.id}')} — run {_b('upgrade ' + str(sess.id))} manually.",
+                    f"Auto-upgrade failed on {_p(f'#{sess.id}')} - run {_b('upgrade ' + str(sess.id))} manually.",
                 ))
 
         if self._in_session:
@@ -215,18 +215,44 @@ class Listener:
         ).start()
 
     def _watch_session(self, sess: Session) -> None:
-        """Background thread: detect when an idle session disconnects."""
+        """Background thread: notice when an idle session disconnects.
+
+        This runs for the whole life of a session, including while you are
+        interacting with it, so it must NEVER consume bytes from the socket.
+        The old version called ``recv(1)`` here, which stole one byte out of
+        every burst the shell sent back. That is what made typed input look
+        like it froze or got dropped: the interactive reader and this watcher
+        were fighting over the same stream.
+
+        The fix is a non-destructive peek. ``MSG_PEEK`` looks at the next byte
+        without removing it, so the real reader still receives everything.
+        ``MSG_DONTWAIT`` keeps the peek from blocking if another thread drained
+        the buffer first.
+        """
+        peek_flags = socket.MSG_PEEK | getattr(socket, "MSG_DONTWAIT", 0)
         while self._running and sess.alive:
             try:
                 r, _, _ = select.select([sess.conn], [], [], 1.0)
-                if r:
-                    data = sess.conn.recv(1)
-                    if not data:
-                        sess.alive = False
-                        return
             except OSError:
                 sess.alive = False
                 return
+            if not r:
+                continue
+            try:
+                peeked = sess.conn.recv(1, peek_flags)
+            except (BlockingIOError, InterruptedError):
+                # Another reader took the byte between select and peek. Fine.
+                continue
+            except OSError:
+                sess.alive = False
+                return
+            if not peeked:
+                # Empty peek on a readable socket means the peer closed it.
+                sess.alive = False
+                return
+            # There is data waiting that someone else will consume. Back off
+            # so we neither steal it nor spin on a permanently readable socket.
+            time.sleep(0.4)
 
     def _auto_upgrade(self, sess: Session) -> None:
         """Run PTY upgrade silently in the background thread."""
@@ -348,7 +374,7 @@ class Listener:
             if len(parts) == 0 or (len(parts) == 1 and not buf.endswith(" ")):
                 options = [c for c in _COMMANDS if c.startswith(text)]
 
-            # First word done — figure out context
+            # First word done - figure out context
             else:
                 cmd      = parts[0].lower()
                 n_args   = len(parts) - 1  # args already typed (excl. current text)
@@ -481,76 +507,97 @@ class Listener:
                 self.stop()
                 return
 
-            elif cmd in ("clear", "cls"):
-                sys.stdout.write("\033[2J\033[H")
-                sys.stdout.flush()
+            # Any single command failing should never take the whole handler
+            # down with it. Report and keep the prompt alive.
+            try:
+                self._handle_command(cmd, parts)
+            except Exception as exc:
+                sys.stdout.write("\r\033[K")
+                notify("error", f"Command {_p(cmd)} failed: {exc}")
 
-            elif cmd in ("help", "h", "?"):
-                print_help()
+    def _handle_command(self, cmd: str, parts: list) -> None:
+        if cmd in ("clear", "cls"):
+            sys.stdout.write("\033[2J\033[H")
+            sys.stdout.flush()
 
-            elif cmd in ("ls", "l", "list"):
-                self._cmd_ls()
+        elif cmd in ("help", "h", "?"):
+            print_help()
 
-            elif cmd in ("go", "g", "interact", "i"):
-                self._require_id(parts, self._cmd_go)
+        elif cmd in ("ls", "l", "list"):
+            self._cmd_ls()
 
-            elif cmd in ("upgrade", "u"):
-                self._require_id(parts, self._cmd_upgrade)
+        elif cmd in ("go", "g", "interact", "i"):
+            self._cmd_go_arg(parts)
 
-            elif cmd == "kill":
-                self._require_id(parts, self._cmd_kill)
+        elif cmd in ("upgrade", "u"):
+            self._require_id(parts, self._cmd_upgrade)
 
-            elif cmd in ("payload", "payloads", "p"):
-                if len(parts) < 2:
-                    from reaper.utils.payloads import _get_interfaces
-                    ifaces = list(_get_interfaces().keys())
-                    notify("error", f"Usage: payloads {_p('<iface>')}")
-                    notify("status", _gr(f"Available: {', '.join(ifaces) or 'none'}"))
-                else:
-                    self._cmd_payload(parts[1])
+        elif cmd == "kill":
+            self._require_id(parts, self._cmd_kill)
 
-            elif cmd in ("modules", "mods", "mdls"):
-                self._cmd_modules()
+        elif cmd in ("killall", "ka"):
+            self._cmd_killall()
 
-            elif cmd in ("reload", "rl"):
-                self._cmd_reload()
+        elif cmd in ("name", "rename", "nick"):
+            self._cmd_name(parts)
 
-            elif cmd == "run":
-                self._dispatch_run(parts)
-
-            elif cmd == "log":
-                self._require_id(parts, self._cmd_log)
-
-            elif cmd == "serve":
-                self._cmd_serve(parts[1] if len(parts) > 1 else ".",
-                                int(parts[2]) if len(parts) > 2 else 8000)
-
-            elif cmd == "stopserve":
-                self._cmd_stopserve()
-
-            elif cmd == "listeners":
-                self._cmd_listeners()
-
-            elif cmd == "addport":
-                if len(parts) < 2:
-                    notify("error", f"Usage: addport {_p('<port>')}")
-                else:
-                    try:
-                        self._cmd_addport(int(parts[1]))
-                    except ValueError:
-                        notify("error", "Port must be an integer.")
-
-            elif cmd == "rmport":
-                if len(parts) < 2:
-                    notify("error", f"Usage: rmport {_p('<port>')}")
-                else:
-                    try:
-                        self._cmd_rmport(int(parts[1]))
-                    except ValueError:
-                        notify("error", "Port must be an integer.")
-
+        elif cmd in ("payload", "payloads", "p"):
+            if len(parts) < 2:
+                from reaper.utils.payloads import _get_interfaces
+                ifaces = list(_get_interfaces().keys())
+                notify("error", f"Usage: payloads {_p('<iface>')}")
+                notify("status", _gr(f"Available: {', '.join(ifaces) or 'none'}"))
             else:
-                notify("error", f"Unknown command: {_p(cmd)}  — type {_b('help')}")
+                self._cmd_payload(parts[1])
+
+        elif cmd in ("modules", "mods", "mdls"):
+            self._cmd_modules()
+
+        elif cmd in ("reload", "rl"):
+            self._cmd_reload()
+
+        elif cmd == "run":
+            self._dispatch_run(parts)
+
+        elif cmd == "log":
+            self._require_id(parts, self._cmd_log)
+
+        elif cmd == "serve":
+            port = 8000
+            if len(parts) > 2:
+                try:
+                    port = int(parts[2])
+                except ValueError:
+                    notify("error", "Server port must be an integer.")
+                    return
+            self._cmd_serve(parts[1] if len(parts) > 1 else ".", port)
+
+        elif cmd == "stopserve":
+            self._cmd_stopserve()
+
+        elif cmd == "listeners":
+            self._cmd_listeners()
+
+        elif cmd == "addport":
+            if len(parts) < 2:
+                notify("error", f"Usage: addport {_p('<port>')}")
+            else:
+                try:
+                    self._cmd_addport(int(parts[1]))
+                except ValueError:
+                    notify("error", "Port must be an integer.")
+
+        elif cmd == "rmport":
+            if len(parts) < 2:
+                notify("error", f"Usage: rmport {_p('<port>')}")
+            else:
+                try:
+                    self._cmd_rmport(int(parts[1]))
+                except ValueError:
+                    notify("error", "Port must be an integer.")
+
+        else:
+            notify("error", f"Unknown command: {_p(cmd)} - type {_b('help')}")
 
     def _require_id(self, parts: list, handler) -> None:
         if len(parts) < 2:
@@ -560,6 +607,54 @@ class Listener:
             handler(int(parts[1]))
         except ValueError:
             notify("error", "Session id must be an integer.")
+
+    def _cmd_go_arg(self, parts: list) -> None:
+        """`go` with no id attaches to the only live session, if there is one."""
+        self._prune()
+        if len(parts) < 2:
+            alive = [s for s in self._sessions.values() if s.alive]
+            if not alive:
+                notify("error", "No live sessions to attach to.")
+                return
+            if len(alive) > 1:
+                notify("error", f"Multiple sessions open. Pick one: {_b('go <id>')}")
+                self._cmd_ls()
+                return
+            self._cmd_go(alive[0].id)
+            return
+        try:
+            self._cmd_go(int(parts[1]))
+        except ValueError:
+            notify("error", "Session id must be an integer.")
+
+    def _cmd_killall(self) -> None:
+        self._prune()
+        ids = list(self._sessions.keys())
+        if not ids:
+            notify("status", _gr("No active sessions."))
+            return
+        if not yesno(f"Kill all {len(ids)} session(s)?"):
+            return
+        for sid in ids:
+            self._remove(sid)
+        notify("success", f"Killed {_p(str(len(ids)))} session(s).")
+
+    def _cmd_name(self, parts: list) -> None:
+        """Attach a friendly label to a session so `ls` is easier to read."""
+        if len(parts) < 3:
+            notify("error", f"Usage: name {_p('<id>')} {_p('<label>')}")
+            return
+        try:
+            sid = int(parts[1])
+        except ValueError:
+            notify("error", "Session id must be an integer.")
+            return
+        sess = self._get(sid)
+        if sess is None:
+            notify("error", f"Session {_p(f'#{sid}')} not found.")
+            return
+        sess.identity = " ".join(parts[2:])
+        notify("success", f"Session {_p(f'#{sid}')} labelled {_gh(sess.identity)}.")
 
     # ------------------------------------------------------------------ #
     # Commands
@@ -735,7 +830,7 @@ class Listener:
             new_sess = self._wait_for_new_session(sess.addr[0], known_ids, timeout=30.0)
 
         if new_sess is None:
-            # The callback never arrived — drop the marker so stale entries
+            # The callback never arrived - drop the marker so stale entries
             # don't poison a future connection from this IP.
             self._pending_conpty.pop(sess.addr[0], None)
             notify("error", "ConPtyShell did not connect back in time.")
@@ -1092,10 +1187,13 @@ class Listener:
         sess.send(f"stty rows {rows} cols {cols} 2>/dev/null\n".encode())
 
     def _winch(self, sess: Session) -> None:
+        # Fires on SIGWINCH while you are attached to a PTY session. We only
+        # push the new size across; we must NOT drain here, because the
+        # interactive reader owns the socket during a session and draining
+        # would swallow live shell output.
         if sess.os_type in ("windows_cmd", "windows_ps"):
             return
         self._sync_winsize(sess)
-        self._drain(sess, 0.15)
 
 
 # ------------------------------------------------------------------ #

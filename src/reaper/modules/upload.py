@@ -57,4 +57,4 @@ class UploadModule(ReaperModule):
         if str(remote_size) == str(total):
             self.ok(f"Uploaded {self.ui._y(remote)}  ({remote_size} bytes)")
         else:
-            self.warn(f"Size mismatch – local={total}  remote={remote_size}")
+            self.warn(f"Size mismatch - local={total}  remote={remote_size}")

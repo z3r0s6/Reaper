@@ -11,9 +11,11 @@ def print_help() -> None:
         ("",            "",                           ""),
         ("SESSION",     "",                           ""),
         ("  ls",        "list",                       "List all active sessions"),
-        ("  go",        "go <id>",                    "Interact with session"),
+        ("  go",        "go [id]",                    "Interact (no id attaches the only session)"),
         ("  upgrade",   "upgrade <id>",               "Upgrade shell to PTY"),
+        ("  name",      "name <id> <label>",          "Give a session a friendly label"),
         ("  kill",      "kill <id>",                  "Terminate a session"),
+        ("  killall",   "killall",                    "Terminate every session"),
         ("  log",       "log <id>",                   "Show log path for a session"),
         ("",            "",                           ""),
         ("PAYLOADS",    "",                           ""),
@@ -46,7 +48,7 @@ def print_help() -> None:
     syn_w = max(len(r[1]) for r in rows) + 2
 
     print()
-    print(f"  {_b(_c('Reaper'))}{_gr(' – reverse shell handler')}")
+    print(f"  {_b(_c('Reaper'))}{_gr(' - reverse shell handler')}")
     print()
     for cmd, syntax, desc in rows:
         if not cmd and not syntax and not desc:

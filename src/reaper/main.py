@@ -38,7 +38,7 @@ def _parse_ports(s: str) -> list[int]:
 def main():
     parser = argparse.ArgumentParser(
         prog="reaper",
-        description="Reaper – multi-session reverse/bind shell handler",
+        description="Reaper - multi-session reverse/bind shell handler",
         add_help=False,
     )
     parser.add_argument("-h", "--help",      action=_ArtHelpAction,
@@ -96,7 +96,7 @@ def main():
     # Misc
     misc_grp = parser.add_argument_group("Misc")
     misc_grp.add_argument(
-        "-v", "--version", action="version", version="reaper 1.1.0",
+        "-v", "--version", action="version", version="reaper 1.2.0",
     )
 
     args = parser.parse_args()
