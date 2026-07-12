@@ -403,42 +403,6 @@ Reaper/
             ├── tcp.py       # one-shot TCP send/recv helpers
             └── payloads.py  # reverse shell payload generator
 ```
-
----
-
-## Changelog
-
-### 1.2.0
-
-- Fix: the interactive session no longer freezes or drops keystrokes. The
-  liveness watchdog used to `recv(1)` off the socket, stealing bytes from the
-  shell you were attached to. It now peeks with `MSG_PEEK` and consumes nothing.
-- Fix: window resize (`SIGWINCH`) during a session no longer drains bytes from
-  the socket. It only forwards the new terminal size now.
-- Fix: a failing command prints an error and returns to the prompt instead of
-  crashing the whole handler.
-- Fix: `serve` with a non-numeric port reports the mistake instead of raising.
-- New: `killall` closes every session at once.
-- New: `name <id> <label>` puts a friendly label on a session.
-- New: `go` with no id attaches to the only live session.
-- Change: new steel-blue theme, tuned for dark terminals. Errors stay red.
-- Change: version bumped to 1.2.0 across the package.
-
-### 1.1.0
-
-- New: each session carries the local listener port that received it.
-- New: notification and `ls` show `→ :PORT` and the `user@host` identity.
-- New: identity capture after OS detection (Linux, cmd, PowerShell).
-- Fix: session logs decode with the session's negotiated encoding, so Windows
-  logs are no longer garbled.
-- Fix: bind-shell mode starts its watchdog immediately.
-- Fix: stale ConPtyShell state is cleared when the callback never arrives.
-- Fix: wake-up pipe descriptors are closed on shutdown.
-
-### 0.1.0
-
-- Initial release.
-
 ---
 
 ## Legal
