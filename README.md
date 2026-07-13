@@ -39,7 +39,6 @@ This release is mostly about one thing: **the interactive shell now actually wor
   purpose, so they still stand out.
 - **New commands:** `killall`, `name`, and `go` with no id (see below).
 
-Full details are in the [Changelog](#changelog).
 
 ---
 
